@@ -1,0 +1,38 @@
+{
+    "editor.fontSize": 19,
+    "editor.fontWeight": 1000,
+    "code-runner.saveFileBeforeRun": true,
+    "code-runner.runInTerminal": true,
+    "python.linting.enabled": false,
+    "python.pythonPath": "C:\\Program Files\\python\\Python310",  
+    "window.zoomLevel": 0,
+    "terminal.integrated.fontSize": 19,
+    "code-runner.clearPreviousOutput": true,
+    "explorer.confirm‎‎‎‎‎Delete": false,
+    "explorer.incrementalNaming": "smart",
+    "files.autoSave": "afterDelay",
+    "command": "workbench.action.terminal.clear",
+    "workbench.startupEditor": "newUntitledFile",
+    "workbench.colorTheme": "Visual Studio Light",
+    "jupyter.alwaysTrustNotebooks": true,
+    "jupyter.askForKernelRestart": false,
+    "liveServer.settings.donotShowInfoMsg": true,
+    "workbench.editorAssociations": {
+        "*.ipynb": "jupyter-notebook"
+    },
+    "python.showStartPage": false,
+    "python.languageServer": "Jedi",
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    "python.defaultInterpreterPath": "C:\\Program Files\\python\\Python310",
+    "editor.minimap.enabled": false,
+    "editor.fontFamily": "D2 Coding ligature, D2Coding, Consolas, 'Courier New', monospace",
+    "editor.fontLigatures": true,
+    "editor.mouseWheelZoom": true,
+    "terminal.integrated.scrollback": 1000,
+    "notebook.lineNumbers": "on",
+}
+
+ 
