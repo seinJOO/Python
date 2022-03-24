@@ -155,10 +155,9 @@ print(dic)
 # 리스트형 변수에 1번 문제와 같은 사전 자료가 여러 개 생성될 수 있게 하시오 (입력값을 받아서)
 pbook = [] ; menu = 1
 while menu != 0 :
-    name = input("이름을 입력하세요 : ")
-    phone = input("전화번호를 입력하세요 : ")
-    email = input("이메일을 입력하세요 : ")
-    pbook.append({'이름':name,'전화번호':phone,'이메일주소':email})
+    dic2.update('이름',input("이름을 입력하세요 : "))
+    dic2.update('전화번호',input("전화번호를 입력하세요 : "))
+    dic2.update('이메일주소',input("이메일을 입력하세요 : "))
     menu = int(input("계속 추가하시려면 1, 종료하시려면 0을 입력하세요 >> "))   
 
 
@@ -167,3 +166,53 @@ while menu != 0 :
 for x in pbook :
     for key, value in x.items() :
         print("{} : {}".format(key, value))
+        
+# ==복습==
+
+# [문제1] 변수명 menu로 사전형 자료를 만들어보기
+menu = {'칼국수':6000,'비빔밥':5500,'돼지국밥':7000,'돈까스':7000,'김밥':2000,'라면':2500}
+for key, value in menu :
+    print(key,"({}원)".format(value))
+    
+# [문제2] 위에서 만든 사전형 자료에서 가격이 6000원 미만에 해당하는 메뉴와 가격을 출력하는 코드 작성
+menu = {'칼국수':6000,'비빔밥':5500,'돼지국밥':7000,'돈까스':7000,'김밥':2000,'라면':2500}
+for key, value in menu.items() :
+    if value < 6000 :
+        print("{}({}원)".format(key,value))
+
+# 선생님 답
+for ke in menu :
+    if menu[ke] < 6000 :
+        print(f"{ke}:{menu[ke]}원")
+
+# [문제3] 사용자 입력으로 메뉴와 가격을 입력받아 menu변수에 자료를 추가하기 (동일한 메뉴는 가격만 변경)
+# [문제4] 메뉴를 자동으로 선택하여 출력
+menu = {'칼국수':6000,'비빔밥':5500,'돼지국밥':7000,'돈까스':7000,'김밥':2000,'라면':2500}
+while True :
+    newMenu = input('추가할 메뉴를 입력하세요 : ')
+    newPrice = int(input('가격을 입력하세요(숫자만) : '))
+    menu.update({newMenu:newPrice})   
+    if int(input("메뉴를 출력하시겠습니까 ?(네 : 1 / 아니오 : 0)")) == 1 :
+        print("=====메뉴판=====")
+        for key, value in menu.items() :
+            print(key,"({}원)".format(value))
+        print("================") 
+    if (int(input('메뉴를 더 추가하시겠습니까 ?(추가 : 1 / 종료 : 0) :'))) == 0 : break
+
+# 선생님 답
+while True :
+    newMenu = input('추가할 메뉴를 입력하세요 : ')
+    newPrice = int(input('가격을 입력하세요(숫자만) : '))
+    if newMenu in menu :
+        menu[newMenu] = newPrice
+        print("{}의 가격이 변경되었습니다".format(newMenu))
+    else : 
+        menu.update({newMenu:newPrice})
+        print("{} 메뉴가 추가되었습니다".format(newMenu))
+    if int(input("메뉴를 출력하시겠습니까 ?(네 : 1 / 아니오 : 0)")) == 1 :
+        print("=====메뉴판=====")
+        for key, value in menu.items() :
+            print(key,"({}원)".format(value))
+        print("================") 
+    if (int(input('메뉴를 더 추가하시겠습니까 ?(추가 : 1 / 종료 : 0) :'))) == 0 : break
+        
