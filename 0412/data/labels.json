@@ -1,0 +1,212 @@
+[
+  {
+    "id": 76811,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Bug",
+    "name": "Bug",
+    "color": "e10c02",
+    "default": false
+  },
+  {
+    "id": 76812,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Enhancement",
+    "name": "Enhancement",
+    "color": "4E9A06",
+    "default": false
+  },
+  {
+    "id": 127681,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Refactor",
+    "name": "Refactor",
+    "color": "FCE94F",
+    "default": false
+  },
+  {
+    "id": 129350,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Build",
+    "name": "Build",
+    "color": "75507B",
+    "default": false
+  },
+  {
+    "id": 134699,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Docs",
+    "name": "Docs",
+    "color": "3465A4",
+    "default": false
+  },
+  {
+    "id": 233160,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Groupby",
+    "name": "Groupby",
+    "color": "729FCF",
+    "default": false
+  },
+  {
+    "id": 2301354,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Data%20IO",
+    "name": "Data IO",
+    "color": "06909A",
+    "default": false
+  },
+  {
+    "id": 2413328,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Visualization",
+    "name": "Visualization",
+    "color": "8AE234",
+    "default": false
+  },
+  {
+    "id": 2822098,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Indexing",
+    "name": "Indexing",
+    "color": "0b02e1",
+    "default": false
+  },
+  {
+    "id": 2822342,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Missing-data",
+    "name": "Missing-data",
+    "color": "d7e102",
+    "default": false
+  },
+  {
+    "id": 8935311,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Performance",
+    "name": "Performance",
+    "color": "a10c02",
+    "default": false
+  },
+  {
+    "id": 13098779,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Reshaping",
+    "name": "Reshaping",
+    "color": "02d7e1",
+    "default": false
+  },
+  {
+    "id": 29648920,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Difficulty%20Novice",
+    "name": "Difficulty Novice",
+    "color": "fbca04",
+    "default": false
+  },
+  {
+    "id": 31404521,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Dtypes",
+    "name": "Dtypes",
+    "color": "e102d8",
+    "default": false
+  },
+  {
+    "id": 32933285,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Admin",
+    "name": "Admin",
+    "color": "DDDDDD",
+    "default": false
+  },
+  {
+    "id": 35818298,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/API%20Design",
+    "name": "API Design",
+    "color": "AD7FA8",
+    "default": false
+  },
+  {
+    "id": 42670965,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Error%20Reporting",
+    "name": "Error Reporting",
+    "color": "ffa0ff",
+    "default": false
+  },
+  {
+    "id": 47223669,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Numeric",
+    "name": "Numeric",
+    "color": "006b75",
+    "default": false
+  },
+  {
+    "id": 47229171,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/IO%20CSV",
+    "name": "IO CSV",
+    "color": "5319e7",
+    "default": false
+  },
+  {
+    "id": 47232590,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/IO%20SQL",
+    "name": "IO SQL",
+    "color": "5319e7",
+    "default": false
+  },
+  {
+    "id": 48070600,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/CI",
+    "name": "CI",
+    "color": "a2bca7",
+    "default": false
+  },
+  {
+    "id": 49094459,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Internals",
+    "name": "Internals",
+    "color": "fbca04",
+    "default": false
+  },
+  {
+    "id": 49597148,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Timedelta",
+    "name": "Timedelta",
+    "color": "5319e7",
+    "default": false
+  },
+  {
+    "id": 53181044,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Frequency",
+    "name": "Frequency",
+    "color": "0052cc",
+    "default": false
+  },
+  {
+    "id": 57186974,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Windows",
+    "name": "Windows",
+    "color": "fbca04",
+    "default": false
+  },
+  {
+    "id": 57296398,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Algos",
+    "name": "Algos",
+    "color": "eb6420",
+    "default": false
+  },
+  {
+    "id": 60458168,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Timezones",
+    "name": "Timezones",
+    "color": "5319e7",
+    "default": false
+  },
+  {
+    "id": 60635328,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Period",
+    "name": "Period",
+    "color": "eb6420",
+    "default": false
+  },
+  {
+    "id": 71268330,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/MultiIndex",
+    "name": "MultiIndex",
+    "color": "207de5",
+    "default": false
+  },
+  {
+    "id": 78527356,
+    "url": "https://api.github.com/repos/pandas-dev/pandas/labels/Categorical",
+    "name": "Categorical",
+    "color": "e11d21",
+    "default": false
+  }
+]
