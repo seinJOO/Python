@@ -1,0 +1,74 @@
+
+server02에 데이터 세팅
+1) Filezilla - bigdata 폴더에 sample.txt 업로드하기
+호스트 : server02.hadoop.com
+사용자명 : bigdata
+비밀번호 : bigdata
+-) server02에서 파일 저장됐는지 확인
+$ cd ~bigdata
+$ su bigdata
+$ hdfs dfs -put Sample.txt /tmp
+$ hdfs dfs -ls /tmp 	로 샘플텍스트 있는지 확인
+$ hdfs dfs -cat /tmp/Sample.txt  > 샘플텍스트 tmp폴더로 옮기기
+$ hdfs dfs -stat '%b %o %r %u %n' /tmp/Sample.txt
+$ hdfs dfs -mv /tmp/Sample.txt /tmp/Sample2.txt    > 파일이름 바꾸기   
+$ hdfs dfsadmin -report
+
+2) 주키퍼 설치됐는지 테스트
+$ zookeeper-client
+$ (zk: localhost:2181(CONNECTED) 0]: create /pilot-pjt bigdata
+$ (zk: localhost:2181(CONNECTED) O]: ls /
+$ (zk: localhost:2181 (CONNECTED) 0]: get /pilot-pjt
+$ (zk: localhost:2181(CONNECTED) 0]: delete /pilot-pjt
+
+3) 로그 시뮬레이터 설치
+$ cd /home
+$ mkdir /home/pilot-pjt
+$ mkdir /home/pilot-pjt/working
+$ mkdir /home/pilot-pjt/working/car-batch-log
+$ mkdir /home/pilot-pjt/working/driver-realtime-log
+$ chmod 777 -R /home/pilot-pjt
+	=> -R : 하위 디렉터리 전체
+	=> 777 : 누구나 접근 가능함
+
+4) 자바 1.8로 변경
+$ java -version	자바 버전 확인
+$ which java	자바 저장위치 확인
+$ rm /usr/bin/java  자바 파일 삭제
+$ rm /usr/bin/javac
+$ ln -s /usr/java/jdk1.8.0_181-cloudera/bin/javac /usr/bin/javac 
+	ln : 심볼릭 동작
+$ ln -s /usr/java/jdk1.8.0_181-cloudera/bin/java /usr/bin/java
+
+5) filezila에서 ../home/pilot-pjt/working 폴더에 jar파일 저장
+
+6) 데이터 생성 클래스 불러오기 > 자동차 데이터 [실행날짜] [대수]    [] : 매개변수
+-------------드라이버 데이터----------------------
+<1번 세션>
+$ cd /home
+# cd pilot-pjt/working/
+# java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.DriverLogMain 20160101 10
+	> 클래스 불러오기
+
+위 명령이 돌아가는 동안 새로 터미널 창 켜서 데이터 만들어내기
+
+<2번 세션>
+# sudo -i
+# cd /home/pilot-pjt/working/driver-realtime-log/
+# tail -f SmartCarDriverInfo.log
+------------스마트카 데이터----------------------
+<1번 세션>
+$ cd /home
+# cd pilot-pjt/working/
+# java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20160101 10
+	클래스 불러오기
+
+위 명령이 돌아가는 동안 새로 터미널 창 켜서 데이터 만들어내기
+
+<2번 세션>
+# sudo -i
+# cd /home/pilot-pjt/working/SmartCar
+# tail -f SmartCarStatusInfo_20160101.txt
+
+=========================================================
+수집.pdf에서 16p~ 보고 플럼, 카프카를 server02에 추가

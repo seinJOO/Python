@@ -1,0 +1,141 @@
+# CM(Cloudera Manager) 
+ [주요 기능]
+ - 프로비저닝 : 하둡 에코시스템을 편리하게 설치, 삭제, 수정 관리
+ - 매니지먼트 : 설치한 에코시스템의 설정 변경 및 최적화 지원
+ - 모니터링 : 하드웨어 리소스 및 설치 컴포넌트의 상태 모니터링/대시보드
+
+
+ [VMware 설정] 2개기준
+ -CPU : 2이상
+ -RAM : 5G(4G)
+ -HDD : 80G
+ - IP : 129.168.56.0 으로 할당
+
+ ** 버츄얼박스의 경우 실행 -> ncpa.cpl -> virtual only-host에서 ip할당해주기(192.168.56.1)
+ 
+ 순서
+- 자바 설치
+- 이클립스 설치
+- 버추얼 박스 -> VMware
+- CentOS -> 서버(3대 -> 2대)
+- 기타도구( xshell (Putty - 터미널 프로그램), 파일질라(FTP), 크롬, 예제코드)
+
+## 빅데이터 서버 환경 구성 : 개인 PC, 리눅스 3대
+- 클라우데라 매니저 설치
+- 빅데이터 에코시스템 설치 : 하둡, 주키퍼 등 기본 구성
+
+1) JAVA 설치
+2) 이클립스 설치
+3) VMWARE 설치
+4) CentOS 설치
+5) SSH 접속 프로그램(터미널 프로그램) xshell (or putty)
+6) FTP 접속 프로그램(FileZilla Client for Windows)
+
+ 
+ [Linux설치 후 작업 : CentOS7 (기본) ]
+server01로 일단 hostname 지정...
+
+server01.hadoop.com -> 192.168.56.101/24, gw 192.168.56.2 server01 
+server02.hadoop.com -> 192.168.56.102/24, gw 192.168.56.2 server02 
+DNS주소 : 168.126.63.1,168.126.63.2
+ 
+---XSHELL로 접속---
+새로만들기
+연결) 이름 Server01, 호스트 192.168.56.101
+사용자인증) bigdata/bigdata -> 확인
+만들어진거 누르고 연결 -> 수락 및 저장
+
+---접속 후 vmware의 linux서버에서 ssh설치---
+$ sudo yum install openssh* -y
+$ systemctl restart sshd
+
+=== [공통 작업] ===
+ sudo vim /etc/hosts
+ 192.168.56.101 server01.hadoop.com
+ 192.168.56.102 server02.hadoop.com
+
+ sudo systemctl stop firewalld
+ sudo systemctl disable firewalld
+
+ iptables -F
+ iptables-save
+ 
+ sudo vim /etc/sysconfig/selinux
+ SELINUX=enforcing -> disabled
+
+ 각각의 호스트 이름 
+ sudo vim /etc/hostname에서 변경
+ server01.hadoop.com 이나 server02.hadoop.com 변경
+
+ **NTP문제 발생
+ sudo systemctl restart chronyd   
+
+경고로 작업해야 할 내용 
+
+echo never > /sys/kernel/mm/transparent_hugepage/defrag
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+
+ # sudo sysctl vm.swappiness
+vm.swappiness = 30
+ # sudo sysctl vm.swappiness=10
+vm.swappiness = 10
+
+
+ ## cloudera manager 설치(root로 변경, "sudo -i" or "su root")
+ -> wget https://archive.cloudera.com/cm7/7.4.4/cloudera-manager-installer.bin
+ -> chmod u+x cloudera-manager-installer.bin
+ -> ./cloudera-manager-installer.bin
+
+ ## 삭제해야 하는 경우
+ -> sudo /opt/cloudera/installer/uninstall-cloudera-manager.sh
+
+  [사용자 지정 서비스]
+   HDFS, YARN, ZooKeeper
+
+HDFS - 구성에서 설정 변경
+복제 계수 : 1
+HDFS 권한 검사 : 체크 해제
+블록 크기 : 64MB
+
+YARN 구성에서 설정 변경
+최대 컨테이너 메모리 1536MB
+yarn.nodemanager.resource.memory = 5GB
+scheduler 클래스 = 두번째꺼
+
+클러스터 재시작 !!
+
+====================================
+[서버01에만 설정]
+$ su root
+adminuser <- 비밀번호 입력해서 관리자모드로 전환
+$ passwd
+root 로 비밀번호 변경 !
+
+[공통 설정]
+$ gpasswd -a bigdata wheel   <- wheel 그룹으로 가입시킴
+$ visudo
+   ## Allows people in group wheel to run all commands
+   %wheel ALL=(ALL)       ALL   << 주석 지우기
+$ reboot
+
+* 설치 시 명령 참고
+$ ping server01.hadoop.com 	해당 서버에 대한 정보...?
+$ sudo systemctl stop firewalld 	방화벽 정지
+$ sudo systemctl disable firewalld	방화벽 제거
+$ vim /etc/sysconfig/selinux		SELINUX의 세 가지 옵션 중 선택 가능
+$ sudo vim /etc/sysconfig/selinux	관리자모드로 SELINUX의 세 가지 옵션 중 선택 가능
+	$ "SELINUX=enforce" => disabled
+$ sudo rpm -qa | grep jdk		jdk 버전 확인
+$ sudo yum install yum-utils -y	유틸리티 설치
+$ which java			자바 설치 위치 확인
+$ ls -l /usr/bin/java
+
+=========================================================
+- 리눅스 용량 늘리기 -
+1. HDD 추가 
+2. $ fdisk /dev/sdb -> n -> 엔터 5번 -> w
+3. pvscan으로 PV 확인	$ pvscan
+4. 파티션 만들기		$ pvcreate /dev/sdb1	-> 1은 원본과 구분할 숫자
+5. pvscan에 나온 VG 그룹에 확장 	$ vgextend [VG:cenos] /dev/sdb1
+6. lvresize /dev/mapper/centos-root /dev/sdb1
+7. xfs_growfs /dev/mapper/centos-root
