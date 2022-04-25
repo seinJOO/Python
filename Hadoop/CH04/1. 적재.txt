@@ -1,0 +1,93 @@
+적재1.pdf 비밀번호 : techbig
+
+<하둡 : 수집한 데이터를 어디에, 어떻게 저장할 것인가>
+* http://server01.hadoop.com:9870/ 에서 설치된 하둡의 정보 조회 가능
+* 클라우데라 매니저에서 HDFS -> NameNode 웹 UI로 들어가도 연결됨 !
+* 리소스 매니저: http://server01.hadoop.com:8088/cluster
+* 잡(Job) 히스토리: http://server01.hadoop.com:19888/jobhistory
+
+- 내/외부 원천 데이터
+정형 데이터(정해진 규칙에 맞게 입력되는 데이터) : 데이터베이스
+반정형 데이터(약한 정형 데이터) : HTML, XML, JSON, 서버로그
+비정형 데이터 (완전히 형식이 없음) : SNS, 문서, 이미지, 오디오, 비디오, IoT
+
+- 적재 저장소 유형 : 데이터 특징, 처리 방식에 따라 나누어짐
+분산파일시스템 / No-SQL / MoM / Cached
+
+하둡의 기능
+1. 대용량 데이터를 분산 저장
+2. 분산 저장된 데이터를 가공/분석 처리 - 분산 병렬 처리 기술 사용
+
+하둡의 맵 리듀스
+1) 분산 저장된 데이터로부터 어떻게 효율적으로 일을 나눠 실행시킬지 (Map 프로그램 동작)
+ 분석 쿼리를 각 저장소 서버에 전송하여 데이터 추출 -> 맵 프로그램이 동작하여 각 저장소에서 데이터 추출하여 처리할 서버로 전송
+2) 분산 처리된 결과를 어떻게 하나로 모을지 (Reduce 프로그램 동작)
+ -> 리듀스 프로그램이 동작하여 맵 프로그램으로부터 전달받은 데이터를 처리하여 결과 파일 생성
+
+ 하둡은 일(日) 단위로 정보를 적재함 -> 시계열로 분석(일/주/월/년)
+
+ <주키퍼>
+ - 공유된 정보를 이용해 서버 간의 중요한 이벤트를 관리하며 상호작용을 조율하는 코디네이터 시스템
+ - 이벤트 예시 : 분산락, 순서제어, 부하분산, 네임서비스 등
+ - 주로 분산 노드 관리에 사용
+
+???
+ - Follow server와 Leader server로 구성
+ - 리더 서버가 갱신 등의 이벤트 발생 시 신호를 팔로우 서버에 전달 
+    -> 팔로우 서버가 신호를 받아 클라이언트로부터 요청받은 정보를 처리(갱신)하고 난 후 리더 서버로 전송
+
+<적재 아키텍처>
+source 컴포넌트로 대용량 파일 읽기
+-> sink를 이용해 하둡의 특정 경로에 적재
+-> 각 DataNode에 일자별 파티션 폴더를 구성해 파티션 단위로 데이터를 적재 및 수정(네임노드가 관리)
+
+
+========= 기능 구현 ==========
+
+CM - 플럼 구성에서 LoggerSink를 HdfsSink로 변경 (텍스트파일 카피)
+** collectDayInterceptor : 기본 제공 인터셉터 X -> 파일럿 프로젝트를 위해 자바로 개발된 사용자 정의 인터셉터
+                           (궁금하면 파일 확인하기~!)
+
+
+/opt/cloudera/parcels/CDH-6.3.2-1.cdh6.3.2.p0.1605554/lib/flume-ng/lib 에 jar파일 저장
+
+< 플럼 적재 기능 테스트 >
+
+1) working 디렉터리에서 데이터 생성
+    cd /home/pilot-pjt/working/
+    java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220425 100 &
+    -> 100대의 정보 생성
+
+2) SmartCar 디렉터리에서 데이터 조회
+    cd /home/pilot-pjt/working/SmartCar/
+    tail -f SmartCarStatusInfo_20220425.txt
+    * SmartCar디렉터리에서 ls -l 입력 시 디렉터리 내의 파일 정보 확인 가능
+
+3) 플럼이 처리할 수 있도록 배치 로그 폴더로 파일을 옮기기
+    mv /home/pilot-pjt/working/SmartCar/SmartCarStatusInfo_20220425.txt /home/pilot-pjt/working/car-batch-log
+
+4) 플럼의 처리 로그 실시간 조회하기
+    tail -f /var/log/flume-ng/flume-cmf-flume-AGENT-server02.hadoop.com.log
+
+5) 로그파일 정보 확인 (일자별 + 용량별로 구분됨 - 우리는 64mb로 설정함 !)
+hdfs dfs -ls -R /pilot-pjt/collect/car-batch-log
+
+6) 
+< 로그파일 모든 내용 조회 (위의 5번에서 발견된 로그의 위치 복붙해서 조회) => 넘 많이 나오니까 주의 >
+hdfs dfs -cat /pilot-pjt/collect/car-batch-log/wrk_date=20220425/car-batch-log.1650865315352.log
+hdfs dfs -cat /pilot-pjt/collect/car-batch-log/wrk_date=20220425/car-batch-log.1650865315353.log
+
+< 로그파일 마지막 10줄의 데이터만 조회 >
+hdfs dfs -tail /pilot-pjt/collect/car-batch-log/wrk_date=20220425/car-batch-log.1650865315352.log
+hdfs dfs -tail /pilot-pjt/collect/car-batch-log/wrk_date=20220425/car-batch-log.1650865315353.log
+
+7) 동작중인 로거 중단시키기
+ps -ef | grep smartcar.log
+-출력결과-
+root     19147 19106  1 14:33 pts/0    00:00:52 java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220425 100
+root     19613 19106  0 14:35 pts/0    00:00:06 java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220425 3
+root     19638 19106  1 14:35 pts/0    00:00:52 java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220425 100
+root     19881 19106  1 14:38 pts/0    00:00:53 java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220425 100
+root     22565 19106  0 15:42 pts/0    00:00:00 grep smartcar.log
+-> 두 번째 출력값인 pid를 kill
+kill -9 19147 19613 19638 19881
