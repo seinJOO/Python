@@ -6,9 +6,9 @@
 - 특정 크기로 모았다가 한꺼번에 적재하거나 대규모 트랜잭션 데이터를 처리하는 데 최적화된 칼럼 지향형 NoSQL 데이터베이스를 주로 사용
 
 < HBase> :  하둡의 HDFS를 기반으로 설치 및 구성
-- NoSQL 데이터베이스들은 데이터를 키/값(Key/Value) 구조로 단순화하고, 칼럼 또는 도큐먼트 형식의 제약사항이 적은 스키마 모델로 만들어 고성능 쓰기/읽기가 가능
--  HBase는 하둡 기반의 칼럼 지향(Column-Oriented) NoSQL 데이터베이스로서 스키마 변경이 자유롭고, 
-   리전이라는 수십~수백 대의 분산 서버로 샤딩과 복제 등의 기능을 지원해 성능과 안정성을 보장
+- NoSQL 데이터베이스들은 데이터를 키/값(Key/Value) 구조로 단순화하고, 컬럼 또는 도큐먼트 형식의 제약사항이 적은 스키마 모델로 만들어 고성능 쓰기/읽기가 가능
+- HBase는 하둡 기반의 컬럼 지향(Column-Oriented) NoSQL 데이터베이스로서 스키마 변경이 자유롭고, 리전이라는 수십~수백 대의 분산 서버로 샤딩과 복제 등의 기능을 지원해 성능과 안정성을 보장
+=> 컬럼 형태로 데이터를 주고받음
 - MemStore : 휘발성이 있는, 데이터를 인메모리에 저장 및 관리하는 데이터 캐시 영역
 - HFile : 데이터를 스토리지에 저장 및 관리하는 영구 저장영역
 
@@ -82,3 +82,129 @@
 (3) 레디스에 과속한 운전자 정보 적재
     레디스에 적재될 때는 현재 날짜를 키로 해서 과속한 차량의 정보를 세트 데이터 구조로 적재한다. 
     적재 영속 시간은 5시간으로 하며, 이후에 만료 처리되어 메모리에서 자동으로 삭제된다.
+
+HBase 테스트 =========================================================================
+=> 컬럼 형태로 데이터를 주고받음
+http://server02.hadoop.com:16010/ 에서 확인 가능
+
+# hbase shell   >> hbase 접속
+> create "smartcar_test_table", "cf"
+> put "smartcar_test_table", "row-key1", "cf:model", "Z0001"
+> put "smartcar_test_table", "row-key1", "cf:no", "12345"
+> get "smartcar_test_table", "row-key1"
+    COLUMN                            CELL                                                                                             
+    cf:model                         timestamp=1650876658458, value=Z0001                                                             
+    cf:no                            timestamp=1650876686161, value=12345                                                             
+    1 row(s)
+> disable "smartcar_test_table" > 사용안함
+> enable "smartcar_test_table"  > 사용
+> drop "smartcar_test_table"    > 삭제(disable 후에 명령하기)
+
+Redis 설치 ===========================================================================
+
+# rpm -qa | grep gcc
+# yum install -y gcc*   >> no valid mirrors => CentOS 6에서는 개발이 중단 된 상태
+
+<캐시폴더에 미러리스트 복붙>
+echo "http://vault.centos.org/6.10/os/x86_64/" > /var/cache/yum/x86_64/6/base/mirrorlist.txt
+echo "http://vault.centos.org/6.10/extras/x86_64/" > /var/cache/yum/x86_64/6/extras/mirrorlist.txt
+echo "http://vault.centos.org/6.10/updates/x86_64/" > /var/cache/yum/x86_64/6/updates/mirrorlist.txt
+echo "http://vault.centos.org/6.10/sclo/x86_64/rh" > /var/cache/yum/x86_64/6/centos-sclo-rh/mirrorlist.txt
+echo "http://vault.centos.org/6.10/sclo/x86_64/sclo" > /var/cache/yum/x86_64/6/centos-sclo-sclo/mirrorlist.txt
+
+# yum install gcc* tcl -y       >> gcc*, tcl 설치
+# cd /home/pilot-pjt/
+# wget http://download.redis.io/releases/redis-5.0.7.tar.gz
+# tar -xf redis-5.0.7.tar.gz       >> 압축 풀기 (-xvf : 압축 풀린 파일 보이는 명령어 추가(v))
+# cd /home/pilot-pjt/redis-5.0.7/
+# make      >> C언어기 때문에 해당 명령어로 실행파일화 !!
+# make install  >> src폴더에 저장된 실행파일로 설치/실행을 함 !
+# cd /home/pilot-pjt/redis-5.0.7/utils  >> ls로 목록 보면 install_server.sh 실행시켜야함
+# ./install_server.sh   >> 전부 다 엔터로 승인(기본값으로 실행)
+        path[]에서 /usr/local/bin/redis-server 입력 후 엔터 !!
+
+# vim /var/log/redis_6379.log   >> 로그파일 보기 (:q로 exit)
+# service redis_6379 status     >> running중인지 확인
+# vim /etc/redis/6379.conf      >> 설정파일 수정(/ << 검색기능)
+    >> /bind 127.0.0.1  >> 주석처리
+    >> /protected-mode  >> no로 변경(password 입력 사용 안함)
+# vim ~/.bash_profile   
+    >> PATH=$PATH:$HOME/bin:/usr/local/bin 으로 수정
+    >> source ~/.bash_profile
+
+# service redis_6379 restart
+# /usr/local/bin/redis-cli
+테스트해보기
+> set key:1 Hello!Bigdata
+> get key:1
+> del key:1
+
+스톰 설치 ============================================================================
+
+# cd /home/pilot-pjt/
+# wget http://archive.apache.org/dist/storm/apache-storm-1.2.3/apache-storm-1.2.3.tar.gz
+# tar -xvf apache-storm-1.2.3.tar.gz 
+# ln -s apache-storm-1.2.3 storm
+# cd /home/pilot-pjt/storm/conf/
+# vim storm.yaml >> 스톰 설정파일 - 아래 내용 아무데나 추가 
+    storm.zookeeper.servers:
+    - "server02.hadoop.com"
+    storm.local.dir: "/home/pilot-pjt/storm/data"
+    nimbus.seeds: ["server02.hadoop.com"]
+    supervisor.slots.ports: 
+    - 6700
+    ui.port: 8088                   >> ui 접속포트
+# cd /home/pilot-pjt/storm/log4j2/
+# vim cluster.xml        >> 75~90번째 줄 (:set nu 로 줄번호 조회 가능) level="error"로 수정
+# vim worker.xml         >> 75~90 동일하게 변경
+# vim /root/.bash_profile
+    PATH=$PATH:$HOME/bin:/usr/local/bin
+    PATH=$PATH:/home/pilot-pjt/storm/bin >> 추가
+# source /root/.bash_profile
+# echo $PATH        >> 추가된 경로 확인 가능
+
+CH05의 nimbus, supervisor, ui파일들을 파일질라로 /etc/rc.d/init.d 에 추가 
+>> 전송 후 세 개의 파일 우클릭 - 권한 - 755
+# mkdir /var/{log,run}/storm >> 로그, 동작 폴더 생성
+# ls -l /var/{log,run}/storm >> 두 디렉터리 동시 조회 가능 !!
+
+# chmod 777 /etc/init.d/storm-*
+# /etc/rc.d/init.d/storm-ui start
+# /etc/rc.d/init.d/storm-supervisor start
+# /etc/rc.d/init.d/storm-nimbus start
+=> http://server02.hadoop.com:8088/ 에서 조회 가능
+
+
+# hbase org.apache.hadoop.hbase.util.RegionSplitter DriverCarInfo HexStringSplit -c 2 -f cf1
+    >> region을 두 개 만들기 -> client.HBaseAdmin: Operation: CREATE, Table Name: default:DriverCarInfo, procId: 10 completed 메세지 뜨면 성공
+* 애플리케이션 구현파일의 jar파일 두 개를 /home/pilot-pjt/working 폴더로 전송하기(파일질라)
+# cd /home/pilot-pjt/working
+# storm jar bigdata.smartcar.storm-1.0.jar com.wikibook.bigdata.smartcar.storm.SmartCarDriverTopology DriverCarInfo
+        >> DriverCarInfo라는 이름으로 스톰 생성
+# storm kill "DriverCarInfo"
+
+데이터 흐름 : Flume -> Kafka -> Storm -> HBase
+
+# java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.DriverLogMain 20220426 10 &
+# tail -f /home/pilot-pjt/working/driver-realtime-log/SmartCarDriverInfo.log >> 수집되고있는 데이터 확인
+# hbase shell
+> count "DriverCarInfo"     >> 1000단위의 행, 총 행 개수 출력됨
+> scan 'DriverCarInfo'      >> 모든 행 출력, 각 행의 정보값이 나옴
+> scan 'DriverCarInfo', {STARTROW=>'00016062402202-O0010',LIMIT=>2}  해당 행 값부터 2개의 행 표시
+> scan 'DriverCarInfo', {COLUMNS=>['cf1:car_number','cf1:area_number'],FILTER=>"RowFilter(=,'regexstring:62402202') AND SingleColumnValueFilter('cf1','area_number',=,'regexstring:F06')"}
+
+
+레디스 구동 확인 =========================================================
+# redis-cli
+> SMEMBERS 20220426             >> 과속으로 필터링 된 정보 출력
+
+# cd /home/pilot-pjt/working
+# java -cp bigdata.smartcar.redis-1.0.jar com.wikibook.bigdata.smartcar.redis.OverSpeedCarInfo 20220426     >> 과속한 차량 찾기
+
+* 지금까지 테스트한 로그 다 죽이기
+# ps -ef | grep smartcar.log
+# kill -9 1093 8037
+# service storm-nimbus stop
+# service storm-supervisor stop
+# service storm-ui stop
+# service redis_6379 stop
