@@ -208,3 +208,9 @@ CH05의 nimbus, supervisor, ui파일들을 파일질라로 /etc/rc.d/init.d 에 
 # service storm-supervisor stop
 # service storm-ui stop
 # service redis_6379 stop
+
+bigdata.smartcar.flume 플럼 프로젝트
+bigdata.smartcar.loggen 로그 시뮬레이터 프로젝트
+bigdata.smartcar.mahout 머하웃 프로젝트
+bigdata.smartcar.redis 레디스 프로젝트
+bigdata.smartcar.storm - 스톰 프로젝트

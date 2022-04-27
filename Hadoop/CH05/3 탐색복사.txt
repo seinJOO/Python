@@ -1,0 +1,112 @@
+빅데이터 웨어하우스 : 탐색적 분석 (EDA)을 하기 위해 비정형 데이터를 후처리 작업으로 정형화한 저장소
+* 빅데이터 웨어하우스 기반의 마트 : 빅데이터 처리/탐색의 최종 결과물
+
+기존 데이터는 RDB모델 - 정형화된 데이터 != 빅데이터
+
+빅데이터 레이크의 파일들은 빅데이터 처리 기술을 통해 하이브 모델로 가공 
+-> 이때 데이터 추출/정제/검증/분리/통합 등을 거쳐 하이브 테이블로 만들어짐 (반정규화)
+-> 하이브 기반의 빅데이터 웨어하우스가 만들어지면 SQL 기반의 다양한 애드혹 분석으로 EDA를 진행
+-> 결과를 집계/요약해서 빅데이트 마트 생성
+-> 빅데이터 마트는 외부 시스템에서 빠른 조회, 제공을 위해 칼럼지향형(ORC/Parquet) 하이브 테이블로 설계 & 분석 주제 영역별로 마트화
+
+* 하이브리드 DW 아키텍처 : 기존 RDBMS 기반의 데이터 웨어하우스에서는 중단기적인 데이터만 보관 -> 장기 데이터는 빅데이터 웨어하우스에 저장
+
+< 하이브 > 
+- 빅데이터의 맵리듀스의 접근성을 높이기 위한 도구 (맵 : 키-쌍 구조로 데이터 수집 리듀스 : 비슷한 타입의 value들의 집합)
+- 클라이언트에서 작성한 QL(Query Language)이 맵리듀스 프로그램으로 변환되어 실행
+
+< 스파크 >
+- 반복적인 대화형 연산 작업을 위한 도구
+- 고성능 인메모리 분석 : 데이터 가공 처리를 인메모리에서 빠르게 처리 (다만, 처리 속도는 느림)
+- 스파크를 통해 머신러닝도 가능!
+- 스파크 SQL, 스파크 스트리밍, 스파크 머신러닝 등의 기능을 제공(데이터 액세스)하고 있어 활용성이 높음
+- 다양한 클라이언트 언어(파이썬, 자바, 스칼라 등)와 라이브러리를 지원
+- 데이터소스 영역은 높은 호환성을 보장 - HDFS, HBase, 카산드라(Cassandra), 일래스틱 서치(Elastic Search) 등 연결 가능
+- 스파크 히스토리 서버 : http://server02.hadoop.com:18088/
+
+< 우지 >
+- 복잡한 선후행 관계를 반복하는 데이터 파이프라인 작업을 위해 방향성 있는 비순환 그래프로 작업을 정의하고 모니터링하는 워크플로우 프로그램
+- 우지를 활용해 후처리 작업을 정의하고 프로세스화(적재된 데이터를 External -> Managed -> Mart로 이동할 때 스케줄링으로 실행)
+
+< 휴 >
+- 하둡의 에코시스템의 기능들을 웹 UI로 통합 제공
+- 자체 플러그인을 설치하거나 API를 연동해서 에코시스템들의 주요 기능들을 웹 UI로 제공
+- 주제 영역별 데이터웨어하우스 작업은 휴의 Job Designer와 함께함
+- 웹UI : http://server02.hadoop.com:8888
+
+===================================================================================================
+하이브, 우지 설치 
+
+휴 설치
+# yum install centos-release-scl
+<미러리스트 4개 복붙>
+# yum install python27          >> python-pip는 이미 설치되어있음!
+# yum install postgresql-devel
+
+# bash -c "source /opt/rh/python27/enable;pip install psycopg2==2.6.2 --ignore-installed"
+    >> bash : 실행 명령어
+
+스파크 설치 및 재시작, 얀 재시작
+
+<< 리눅스 명령어 팁 >>
+halt init 0 => 부팅레벨 0으로 (끄기)
+shutdown -h now => 안정적으로 끄기
+shutdown -r now => 재부팅
+===================================================================================================
+1. HUE 웹 UI 접속
+2. 명령어 테스트 
+    1) 편집기 - HIVE에서 6-44 SQL파일 넣고 실행 (테이블 external 생성)
+    2) ALTER TABLE smartcar_status_info ADD PARTITION(wrk_date='20220425');
+        >> 전체 데이터 중 입력한 날짜로 파티셔닝하여 데이터를 분할해서 /pilot-pjt/collect/car-batch-log/wrk_date='##'폴더에 저장됨
+    3) select * from smartcar_status_info limit 5;    >> 5개 목록 출력
+    4) select car_number, avg(battery) as battery_avg from smartcar_status_info where battery < 60 group by car_number;
+
+3. HBase 데이터 탐색
+    1) CREATE EXTERNAL TABLE SmartCar_Drive_Info(
+    r_key string, r_date string, car_number string, speed_pedal string, break_pedal string, steer_angle string, 
+    direct_light string, speed string, area_number string) 
+    STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' 
+    WITH SERDEPROPERTIES (
+    "hbase.columns.mapping" = "cf1:date,cf1:car_number, cf1:speed_pedal, cf1:break_pedal, cf1:steer_angle,
+                                cf1:direct_light, cf1:speed, cf1:area_number")
+    TBLPROPERTIES("hbase.table.name" = "DriverCarInfo");
+    
+    2) select * from smartcar_drive_info limit 10;
+
+3. 데이터셋 추가
+    1) HUE에서 /pilot-pjt/collect/에서 car-master 디렉토리 생성 후 CarMaster.txt, buy-list 디렉토리 생성 후 CarItemBuyList_202003.txt 넣기
+
+4. 추가한 두 개의 데이터셋을 하이브의 External 테이블로 정의
+    1) 스마트카 마스터 테이블 생성
+    CREATE EXTERNAL TABLE SmartCar_Master (
+    car_number string, sex string, age string, marriage string, region string,
+    job string, car_capacity string, car_year string, car_model string)
+    row format delimited
+    fields terminated by '|'
+    stored as textfile
+    location '/pilot-pjt/collect/car-master';
+    >> location '' 에 3번에서 추가한 데이터셋 폴더로 지정
+    - 테스트 : select * from SmartCar_Master limit 10;
+
+    2) 아이템buylist 테이블 생성
+    CREATE EXTERNAL TABLE SmartCar_Item_BuyList (
+    car_number string, Item string,
+    score string, month string)
+    row format delimited
+    fields terminated by ','
+    stored as textfile
+    location '/pilot-pjt/collect/buy-list';
+    - 테스트 : select * from SmartCar_Item_BuyList limit 10;
+
+5. 추가 데이터셋 탐색 - 제플린 이용 (차량의 실소유주가 아닌 사람(미성년자 등)을 제외시키기)
+    1) spark-shell                >>> 스파크-셸 실행  
+    2) val smartcar_master_df = spark.sqlContext.sql("SELECT * from SmartCar_Master where age >= 18")
+            >>  age >= 18 인 조건으로 스파크-SQL 컨텍스트 정의해서smartcar_master_df(DataFrame 변수)에 대입
+    3) smartcar_master_df.show()    >>> 상위 20개의 DataFrame 출력
+    4) smartcar_master_df.write.saveAsTable("SmartCar_Master_Over18")
+        >> 성인만으로 정제된 데이터셋을 하이브의 SmartCar_Master_Over18(Managed table)에 별도 저장
+    5) Select * from SmartCar_Master_Over 18 where Age > 18 limit 10
+        휴 웹UI -> 편집기에서 위 테이블이 생성됐는지 확인
+
+** 스파크는 인메모리 기반이기 때문에 하이브보다 3배 이상 빠름 !!!!
+
