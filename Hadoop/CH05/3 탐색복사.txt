@@ -105,8 +105,250 @@ shutdown -r now => 재부팅
     3) smartcar_master_df.show()    >>> 상위 20개의 DataFrame 출력
     4) smartcar_master_df.write.saveAsTable("SmartCar_Master_Over18")
         >> 성인만으로 정제된 데이터셋을 하이브의 SmartCar_Master_Over18(Managed table)에 별도 저장
-    5) Select * from SmartCar_Master_Over 18 where Age > 18 limit 10
+    5) Select * from SmartCar_Master_Over18 where Age > 18 limit 10
         휴 웹UI -> 편집기에서 위 테이블이 생성됐는지 확인
 
 ** 스파크는 인메모리 기반이기 때문에 하이브보다 3배 이상 빠름 !!!!
+
+====================================================================================
+<< 데이터 탐색 기능 구현 및 테스트 >>
+
+-조건 (빅데이터 마트 분류)
+    주제 영역 1: 스마트카 상태 모니터링 정보 - 마스터 데이터(SmartCar_Master_Over18) / 상태 정보 데이터 (smartcar_status_info)
+    주제 영역 2: 스마트카 운전자 운행기록 정보 - 마스터 데이터(SmartCar_Master_Over18) / 운전자 운행 데이터 (smartcar_drive_info_2)
+    주제 영역 3: 이상 운전 패턴 스마트카 정보 - 운전자 운행기록 정보 (Managed_SmartCar_Drive_Info)
+    주제 영역 4: 긴급 점검이 필요한 스마트카 정보 - 상태 모니터링 정보 (Managed_SmartCar_Status_Info)
+    주제 영역 5: 운전자의 차량용품 구매 이력 정보 - 마스터 데이터(SmartCar_Master_Over18) / 차량용품 구매 이력 데이터(SmartCar_Item_BuyList)
+
+<< 영역 1 : 스마트카 상태 모니터링 정보 >>
+
+1) 오늘일자 스마트카 데이터 생성
+    cd /home/pilot-pjt/working/
+    java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.CarLogMain 20220428 100 &
+
+2) 생성된 데이터 용량 확인 (보통 1대 당 1MB)
+    cd SmartCar/
+    ls -ltrh SmartCarStatusInfo_20220428.txt
+
+3) 동작중인 로거 종료
+    kill -9 [pid]
+    ps -ef | grep SmartCarLog << 종료되었는지 확인
+
+4) 플럼을 통해 하둡에 적재 (5~10분 소요)
+    mv /home/pilot-pjt/working/SmartCar/SmartCarStatusInfo_20220428.txt /home/pilot-pjt/working/car-batch-log/
+    tail -f /var/log/flume-ng/flume-cmf-flume-AGENT-server02.hadoop.com.log     >> 플럼 로그에서 Creating되는지 확인하기
+
+5) 적재된 데이터 확인
+    hdfs dfs -ls -R /pilot-pjt/collect/car-batch-log/   >> 파일 크기가 합쳐서 100MB인지 확인!
+
+6) 스톰, 레디스 실행
+    service storm-nimbus start
+    service storm-supervisor start
+    service storm-ui start
+    service redis_6379 start
+
+7) 오늘일자 운행정보 데이터 생성 (용량 문제로 5대만)
+    java -cp bigdata.smartcar.loggen-1.0.jar com.wikibook.bigdata.smartcar.loggen.DriverLogMain 20220428 5 &
+
+8) 운행정보 데이터 생성되는지 확인
+    cd /home/pilot-pjt/working/driver-realtime-log/
+    tail -f SmartCarDriverInfo.log
+    HBASE의 DriverCarInfo 폴더에 데이터 확인
+
+9) 메모리를 위해 스톰, 레디스, 플럼, 카프카 중지
+
+10) 우지 실행 후 문서 -> 새문서 -> workflow/hive_script 생성해서 subject 1~5 디렉터리 생성
+
+11) subject1/create_table_managed_smartcar_status_info.hql 생성 >> 상태 모니터링 정보 테이블 생성
+
+    create table if not exists Managed_SmartCar_Status_Info (
+    car_number string, sex string, age string, marriage string, region string, job string,
+    car_capacity string, car_year string, car_model string, tire_fl string, tire_fr string,
+    tire_bl string, tire_br string, light_fl string, light_fr string, light_bl string,
+    light_br string, engine string, break string, battery string, reg_date string)
+    partitioned by( biz_date string ) row format delimited fields terminated by ','
+    stored as textfile;
+
+12) subject1/alter_partition_smartcar_status_info.hql 생성 >> 날짜별로 동적 파티셔닝
+    alter table SmartCar_Status_Info add if not exists partition(wrk_date='${working_day}');
+
+13) subject1/insert_table_managed_smartcar_status_info.hql  >> 데이터 입력 쿼리 생성
+    
+    set hive.exec.dynamic.partition=true;               >> 동적 파티션 생성을 위한 하이브 환경변수 값 설정
+    set hive.exec.dynamic.partition.mode=nonstrict; 
+
+    insert overwrite table Managed_SmartCar_Status_Info partition(biz_date)  
+    select t1.car_number, t1.sex, t1.age, t1.marriage, t1.region, t1.job, t1.car_capacity,
+    t1.car_year, t1.car_model, t2.tire_fl, t2.tire_fr, t2.tire_bl, t2.tire_br, t2.light_fl,
+    t2.light_fr, t2.light_bl, t2.light_br, t2.engine, t2.break, t2.battery, t2.reg_date,
+    substring(t2.reg_date, 0, 8) as biz_date 
+    from  SmartCar_Master_Over18 t1 join SmartCar_Status_Info t2
+                 >> 스파크-SQL로 정제했던 OVER18테이블과 조인해서 사용
+    on t1.car_number = t2.car_number and t2.wrk_date = '${working_day}';
+
+14) 워크플로우 만들기 (subject1_Workflow)
+    HUE의 스케줄러 -> workflow -> subject1 폴더의 hql들 넣기 // create -> alter -> insert 추가 ( 매개변수: working_day=$(today) ) 
+
+15) 예약 만들기 (Subject1_예약)
+    스케줄러 -> 예약 -> 조건에 따라 스케줄링(매개변수 : ${coord:formatTime(coord:dateTzOffset(coord:nominalTime(),  "Asia/Seoul"),  'yyyyMMdd')}  )
+    제출 => 테스트 실행 됨 !!! -> 메뉴>테이블에서 새로고침하면 생성된 테이블 조회 가능!
+    => 잡 진행과정은 메뉴>잡 아니면 우측상단의 job!
+
+16) 바로 실행시키기 : 워크플로우 매개변수 지정해서 제출 (소괄호 썼을 경우 잘 동작 안하니까 쿼리 자체의 working_day를 바꿔서 실행시키기)
+17) 데이터 입력되었는지 확인하기
+    select * from Managed_SmartCar_Status_Info where biz_date = '20220428' limit 10;
+
+<< 주제 영역 2: 스마트카 운전자 운행기록 정보 >> (subject2 폴더)
+1)  테이블 생성 / 데이터 삽입 쿼리 입력
+
+* create_table_smartcar_drive_info_2.hql        : smartcar_drive_info를 하이브 테이블로 재구성하기 위한 테이블
+    create external table if not exists SmartCar_Drive_Info_2 (
+    r_key string, r_date string, car_number string, speed_pedal string, break_pedal string, 
+    steer_angle string, direct_light string, speed string, area_number string)
+    partitioned by( wrk_date string ) row format delimited fields terminated by ','
+    stored as textfile location '/pilot-pjt/collect/drive-log/'
+
+* create_table_managed_smartcar_drive_info.hql  : 하이브의 Managed 영역에 운행 데이터를 저장하기 위한 테이블
+    create table if not exists Managed_SmartCar_Drive_Info (
+    car_number string, sex string, age string, marriage string, region string, job string, car_capacity string,
+    car_year string, car_model string, speed_pedal string, break_pedal string, steer_angle string, 
+    direct_light string, speed string, area_number string, reg_date string )
+    partitioned by( biz_date string ) row format delimited fields terminated by ',' stored as textfile;
+
+* insert_table_smartcar_drive_info_2.hql
+    set hive.exec.dynamic.partition=true;  
+    set hive.exec.dynamic.partition.mode=nonstrict; 
+
+    insert overwrite table SmartCar_Drive_Info_2 partition(wrk_date)  
+    select r_key , r_date , car_number , speed_pedal , break_pedal , steer_angle , direct_light , 
+    speed , area_number , substring(r_date, 0, 8) as wrk_date from SmartCar_Drive_Info 
+    where substring(r_date, 0, 8) = '${working_day}';
+
+* insert_table_managed_smartcar_drive_info.hql
+
+
+2) 워크플로우 생성 (Subject2_Workflow)
+    HUE의 스케줄러 -> workflow -> subject2 폴더의 hql들 넣기 // create -> create -> insert 추가 ( 매개변수: working_day=$(today) )
+3) 예약 생성 (Subject2_예약)
+    스케줄러 -> 예약 -> 조건에 따라 스케줄링(매개변수 : ${coord:formatTime(coord:dateTzOffset(coord:nominalTime(),  "Asia/Seoul"),  'yyyyMMdd')}  )
+
+<<주제 영역 3: 이상 운전 패턴 스마트카 정보>> (subject3 폴더)
+- 과속/급제동 표준값이 각각 2 이상인 차량의 경우만 비정상(abnormal)인 차량으로 판단
+- Left/Right 회전각 “2-3" 단계를 “1000번 이상 했을 경우 급회전이 빈번한 “비정상(abnormal)” 차량으로 판단
+- 전체 평균과 표준편차 값을 구하고, 당일(20220428)에 차량별 편차를 구해 이상 차량임을 판단
+    => 피처 엔지니어링 : 기존의 변수를 가공해 새로운 변수와 정보를 추가
+
+1) 테이블 생성 / 데이터 삽입 쿼리 입력
+    * create_table_managed_smartcar_symptom_info.hql    : 운전자의 이상 운행 패턴을 관리하기 위한 하이브 테이블
+    create table if not exists Managed_SmartCar_Symptom_Info (
+    car_number string, speed_p_avg string, speed_p_symptom string, break_p_avg string, break_p_symptom string, steer_a_cnt string,
+    steer_p_symptom string, biz_date string ) row format delimited fields terminated by ',' stored as textfile;
+
+    * insert_table_managed_smartcar_symptom_info.hql   : 차량 번호별 스피드 페달, 운전대, 브레이크 페달의 데이터 분석 결과 저장
+       insert into table Managed_SmartCar_Symptom_Info  
+        select 
+        t1.car_number,
+        t1.speed_p_avg_by_carnum,
+        case
+            when (abs((t1.speed_p_avg_by_carnum - t3.speed_p_avg) / t4.speed_p_std))  >  2 
+            then 'abnormal'
+            else   'normal'
+        end
+        as speed_p_symptom_score,
+        t1.break_p_avg_by_carnum,
+        case
+            when (abs((t1.break_p_avg_by_carnum - t3.break_p_avg) / t4.break_p_std))  >  2 
+            then 'abnormal'
+            else   'normal'
+        end
+        as break_p_symptom_score,
+        t2.steer_a_count,
+        case
+            when (t2.steer_a_count)  >   2000
+            then 'abnormal'
+            else   'normal'
+        end
+        as steer_p_symptom_score,
+        t1.biz_date
+        from (select car_number, biz_date, avg(speed_pedal) as speed_p_avg_by_carnum, avg(break_pedal) as break_p_avg_by_carnum from managed_smartcar_drive_info where biz_date =  '${working_day}'  group by car_number, biz_date) t1
+        join (select car_number, count(*) as steer_a_count from managed_smartcar_drive_info where steer_angle in ('L2','L3','R2','R3') and biz_date =  '${working_day}'  group by car_number) t2
+        on 
+        t1.car_number = t2.car_number ,
+        (select avg(speed_pedal) as speed_p_avg, avg(break_pedal) as break_p_avg from managed_smartcar_drive_info ) t3,
+        (select stddev_pop(s.speed_p_avg_by_carnum) as speed_p_std, stddev_pop(s.break_p_avg_by_carnum) as break_p_std from 
+                    (select car_number, avg(speed_pedal) as speed_p_avg_by_carnum, avg(break_pedal) as break_p_avg_by_carnum from managed_smartcar_drive_info group by car_number) s) t4
+
+2) 워크플로우 생성 (Subject3_Workflow)
+    HUE의 스케줄러 -> workflow -> subject3 폴더의 hql들 넣기 // create -> insert 추가 ( 매개변수: working_day=${today} )
+3) 예약 생성 (Subject3_예약)
+    스케줄러 -> 예약 -> 조건에 따라 스케줄링(매개변수 : ${coord:formatTime(coord:dateTzOffset(coord:nominalTime(),  "Asia/Seoul"),  'yyyyMMdd')}  )
+4) 데이터 조회해보기
+    SELECT car_number, cast(speed_p_avg as int), speed_p_symptom, cast(break_p_avg as float), break_p_symptom, 
+    cast(steer_a_cnt as int), steer_p_symptom, biz_date FROM managed_smartcar_symptom_info where biz_date = '20220428'
+5) 조회한 데이터 차트로 뽑아보기 (x축, y축 선택)
+<<주제 영역 4: 긴급 점검이 필요한 스마트카 정보>>
+- 데이터(타이어, 라이트, 브레이크, 엔진, 배터리)를 분석해 긴급 점검이 필요한 스마트카 차량 리스트
+1) 테이블 생성 / 데이터 삽입 쿼리 입력      : 6가지 점검 상태를 분석해서 그 결과를 “스마트카 긴급 점검 차량 정보(Managed_SmartCar_Emergency_Check_Info)” 마트 테이블에 저장
+  * create_table_managed_smartcar_emergency_check_info.hql    : 스마트카 긴급 점검 차량 정보 테이블
+    create table if not exists Managed_SmartCar_Emergency_Check_Info (
+    car_number string, tire_check string, light_check string, engine_check string,
+    break_check string, battery_check string, biz_date string ) row format delimited
+    fields terminated by ',' stored as textfile;
+  * insert_table_managed_smartcar_emergency_check_info.hql      :
+  insert into table Managed_SmartCar_Emergency_Check_Info 
+    select t1.car_number, t2.symptom as tire_symptom, t3.symptom as light_symptom, t4.symptom as engine_symptom,
+    t5.symptom as break_symptom, t6.symptom as battery_symptom, t1.biz_date
+    from (select distinct car_number as car_number, biz_date from managed_smartcar_status_info  where biz_date = '${working_day}') t1 
+    
+    ↓ 타이어 점검
+    left outer join (   select car_number, avg(tire_fl) as tire_fl_avg , avg(tire_fr) as tire_fr_avg , avg(tire_bl) as tire_bl_avg , 
+    avg(tire_br) as tire_br_avg , 'Tire Check' as symptom from managed_smartcar_status_info where biz_date ='${working_day}'
+    group by car_number having  tire_fl_avg < 80 or tire_fr_avg < 80 or  tire_bl_avg < 80 or tire_br_avg < 80 ) t2  
+    on t1.car_number = t2.car_number
+
+    ↓ 라이트 점검
+    left outer join (  select distinct car_number, 'Light Check' as symptom from managed_smartcar_status_info 
+    where biz_date = '${working_day}' and (light_fl = '2' or light_fr = '2' or light_bl = '2' or light_br = '2')) t3 
+    on t1.car_number = t3.car_number
+
+    ↓ 엔진 점검
+    left outer join (   select  distinct car_number, 'Engine Check' as symptom from managed_smartcar_status_info  
+    where biz_date = '${working_day}' and engine = 'C' ) t4 on t1.car_number = t4.car_number
+    
+    ↓ 브레이크 점검
+    left outer join (   select 
+    distinct car_number, 'Brake Check' as symptom from managed_smartcar_status_info where biz_date = '${working_day}' and break = 'C' ) t5     
+    on t1.car_number = t5.car_number 
+    
+    ↓ 배터리 점검
+    left outer join (   select car_number, avg(battery) as battery_avg, 'Battery Check' as symptom from managed_smartcar_status_info where biz_date = '${working_day}'
+    group by car_number having battery_avg < 30 ) t6 on t1.car_number = t6.car_number
+    where t2.symptom is not null or t3.symptom is not null or t4.symptom is not null  or t5.symptom is not null  or t6.symptom is not null 
+
+2) 워크플로우 생성 (Subject4_Workflow)
+    HUE의 스케줄러 -> workflow -> subject4 폴더의 hql들 넣기 // create -> insert 추가 ( 매개변수: working_day=${today} )
+3) 예약 생성 (Subject4_예약)
+    스케줄러 -> 예약 -> 조건에 따라 스케줄링(매개변수 : ${coord:formatTime(coord:dateTzOffset(coord:nominalTime(),  "Asia/Seoul"),  'yyyyMMdd')}  )
+
+<<주제 영역 5: 운전자의 차량용품 구매 이력 정보>>
+1) 테이블 생성 / 데이터 삽입 쿼리 입력      : 차량번호별로 구매한 상품 리스트를 로컬 파일시템에 생성
+    * create_table_smartcar_item_buylist_info.hql
+    create table if not exists Managed_SmartCar_Item_BuyList_Info (
+    car_number string,  sex string, age string, marriage string, region string, job string, car_capacity string,
+    car_year string, car_model string, item string, score string)
+    partitioned by( biz_month string )row format delimitedfields terminated by ','stored as textfile;
+
+    * insert_table_managed_smartcar_item_buylist_info.hql
+    set hive.exec.dynamic.partition=true;  
+    set hive.exec.dynamic.partition.mode=nonstrict; 
+    insert overwrite table Managed_SmartCar_Item_BuyList_Info partition(biz_month)  
+    select t1.car_number,t1.sex,t1.age,t1.marriage,t1.region,t1.job,t1.car_capacity,t1.car_year,
+    t1.car_model,t2.item,t2.score,t2.month as biz_month
+    from SmartCar_Master_Over18 t1 join SmartCar_Item_Buylist t2 
+    on t1.car_number = t2.car_number where t2.month = '202003';
+        >> month <- 동적 파티션 월 단위로 나누기 (buylist는 202003 데이터가 입력되어있음)
+2) 워크플로우 생성 (Subject5_Workflow)
+    HUE의 스케줄러 -> workflow -> subject5 폴더의 hql들 넣기 // create -> insert 추가 ( 매개변수: working_day=${today} )
+3) 예약 생성 (Subject5_예약)
+    스케줄러 -> 예약 -> 조건에 따라 스케줄링(매개변수 : ${coord:formatTime(coord:dateTzOffset(coord:nominalTime(),  "Asia/Seoul"),  'yyyyMMdd')}  )
 
