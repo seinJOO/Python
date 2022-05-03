@@ -27,6 +27,7 @@ SNS에 남긴 라이프로그와 운행 패턴과의 연관성을 분석해 매�
 
 << 머하웃 >>
 - 머신러닝 기법을 이용해 데이터 마이닝을 수행하는 툴
+* 머하웃과 스파크ML 같은 머신러닝 기술은 복잡도가 높은 비즈니스 로직을 자동으로 생성 및 관리하거나, 대규모 단순 반복 작업에서 패턴들을 찾아 효율화하는 데 사용
 - 주요 라이브러리 : 추천, 분류, 군집
 - 추천 라이브러리를 활용해 “차량용품 구매 이력 데이터를 분석하고 스마트카 운전자 가운데 유사 그룹 간의 구매 선호도에 따라 차량용품을 추천하는 작업
     ✔ 스마트카 사용자 기반 협업 필터링
@@ -72,6 +73,7 @@ select * from managed_smartcar_item_buylist_info where biz_month = '202204'
         )T2
      WHERE ranking = 1;
 
+
 << 제플린을 이용한 운행 지역 분석 >>
 1. 제플린 구동 후 server02.hadoop.com:8081에 접속
    $ zeppelin-daemon.sh start
@@ -113,13 +115,321 @@ select * from managed_smartcar_item_buylist_info where biz_month = '202204'
      order by T1.avg_speed desc
 
 
+<< 머하웃을 이용한 스마트카 차량용품 추천 >>
+- 차량고유번호(car_number), 구매용품아이템코드(item), 사용평가점수(score)를 활용해 추천 예정
+
+1. 휴 - hive 편집기에서 스마트카 용품 구매 이력 테이블에서 필요한 속성만 조회해서 로컬에 파일 생성
+    머하웃의 추천기 라이브러리의 입력 데이터로 사용하기 위해 형변환(hash) 등을 거침
+    INSERT OVERWRITE LOCAL DIRECTORY '/home/pilot-pjt/mahout-data/recommendation/input'
+     ROW FORMAT DELIMITED
+     FIELDS TERMINATED BY ','
+     SELECT hash(car_number), hash(item), score FROM managed_smartcar_item_buylist_info;
+
+2. Xshell에서 데이터 잘 들어갔는지 확인
+    $ more /home/pilot-pjt/mahout-data/recommendation/input/* => 데이터들 읽기 가능
+    $ ll /home/pilot-pjt/mahout-data/recommendation/input/*
+        -rw-r--r-- 1 hive hive 2071916 May  2 17:32 /home/pilot-pjt/mahout-data/recommendation/input/000000_0
+
+3. 머하웃 입력데이터용 폴더를 만들어서 위에서 생성한 파일 옮기기
+    $ hdfs dfs -mkdir -p /pilot-pjt/mahout/recommendation/input
+    $ hdfs dfs -put /home/pilot-pjt/mahout-data/recommendation/input/* /pilot-pjt/mahout/recommendation/input/item_buylist.txt
+
+4. 머하웃의 추천 분석기 실행
+    i : 추천 분석에 사용할 입력 데이터 O: 추천 분석 결과가 출력될 경로 S: 추천을 위한 유사도 알고리즘 n: 추천할 아이템 개수
+    $ mahout recommenditembased -i /pilot-pjt/mahout/recommendation/input/item_buylist.txt -o /pilot-pjt/mahout/recommendation/output/ -s SIMILARITY_COOCCURRENCE -n 3
+    << 추천분석기 실행 중 오류 발생했을때 다 지워버리고 다시 실행 >>
+    * hdfs dfs -rm -R -skipTrash /user/root/temp
+5. 휴에서 추천 결과 확인 (/ pilot-pjt/ mahout/ recommendation/ output)
+
+<< 스마트카 상태 정보 예측/분류 - 운행 중인 차량의 안전 상태를 실시간으로 점검하는 머신러닝 분석 >>
+- 분류 알고리즘 : 나이브 베이지안, 랜덤 포레스트, 로지스틱 회귀 등등...
+- 랜덤 포레스트 알고리즘 : 학습을 통해 각각의 특징을 가지는 여러 개의 의사결정 트리를 앙상블로 구성하는 알고리즘
+                        모델의 오버피팅을 최소화하면서 일반화 성능을 향상시킨 머신러닝 기법
+- 스마트카 운행 데이터를 스파크 머신러닝 분류기에 입력하여 분류기를 학습시킴 -> 스마트카 상태 판단 프로그램 생성 (분류 패턴 로직화)
+  -> 운행중인 스마트카 시스템에 적용하여 실시간으로 분류 및 예측
+
+1. 하이브로 머하웃 분류기에 입력할 트레이닝 데이터셋 생성
+   - 목표변수 정의해서 정제한 데이터를 로컬의 /home/pilol-pil/spark-data/classification/input 에 생성
+   INSERT OVERWRITE LOCAL DIRECTORY '/home/pilot-pjt/spark-data/classification/input'
+    ROW FORMAT DELIMITED
+    FIELDS TERMINATED BY ','
+    select sex, age, marriage, region, job, car_capacity, car_year, car_model, tire_fl, tire_fr, 
+            tire_bl, tire_br, light_fl, light_fr, light_bl, light_br, engine, break, battery,
+            
+        case when ((tire_fl_s + tire_fr_s + tire_bl_s + tire_br_s + light_fl_s + light_fr_s + light_bl_s + light_br_s
+                    + engine_s + break_s + battery_s + car_capacity_s + car_year_s + car_model_s) < 6)
+        then '비정상' else '정상'
+        end as status       >> 목표변수 status : 변수들의 값의 합이 6 미만인 경우 “비정상” , 6 이상인 경우에 “정상”
+        
+        from ( select sex, age, marriage, region, job, car_capacity, car_year, car_model, tire_fl, tire_fr, 
+                    tire_bl, tire_br, light_fl, light_fr, light_bl, light_br, engine, break, battery,
+
+            case when (1500 > cast(car_capacity as int)) then -0.3
+                when (2000 > cast(car_capacity as int)) then -0.2
+                else -0.1
+            end as car_capacity_s,                          >> car_capacity가 높을수록 좋음
+            
+            case when (2005 > cast(car_year as int)) then -0.3
+                when (2010 > cast(car_year as int)) then -0.2
+                else -0.1
+            end as car_year_s,                              >> 연식이 2005년 이전인 경우, 2010년 이전인 경우
+            
+            case when ('B' = car_model) then -0.3
+                when ('D' = car_model) then -0.3
+                when ('F' = car_model) then -0.3
+                when ('H' = car_model) then -0.3
+                else 0.0
+            end as car_model_s,                             >> 특정 모델 차량
+            
+            case when (10 > cast(tire_fl as int)) then 0.1
+                when (20 > cast(tire_fl as int)) then 0.2
+                when (40 > cast(tire_fl as int)) then 0.4
+                else 0.5
+            end as tire_fl_s,                               >> 전면 왼쪽 타이어의 성능 평가
+            
+            case when (10 > cast(tire_fr as int)) then 0.1
+                when (20 > cast(tire_fr as int)) then 0.2
+                when (40 > cast(tire_fr as int)) then 0.4
+                else 0.5
+            end as tire_fr_s,                               >> 전면 오른쪽 타이어의 성능 평가
+            
+            case when (10 > cast(tire_bl as int)) then 0.1
+                when (20 > cast(tire_bl as int)) then 0.2
+                when (40 > cast(tire_bl as int)) then 0.4
+                else 0.5
+            end as tire_bl_s,                               >> 후면 왼쪽 타이어의 성능 평가
+            
+            case when (10 > cast(tire_br as int)) then 0.1
+                when (20 > cast(tire_br as int)) then 0.2
+                when (40 > cast(tire_br as int)) then 0.4
+                else 0.5
+            end as tire_br_s,                               >> 후면 오른쪽 타이어의 성능 평가
+            
+            case when (cast(light_fl as int) = 2) then 0.0 else 0.5 end as light_fl_s,  >> 각 라이트의 성능 평가
+            case when (cast(light_fr as int) = 2) then 0.0 else 0.5 end as light_fr_s,
+            case when (cast(light_bl as int) = 2) then 0.0 else 0.5 end as light_bl_s,
+            case when (cast(light_br as int) = 2) then 0.0 else 0.5 end as light_br_s,
+            
+            case when (engine = 'A') then 1.0       >> 엔진 상태에 따른 성능 평가
+                when (engine = 'B') then 0.5
+                when (engine = 'C') then 0.0
+            end as engine_s ,
+                
+            case when (break = 'A') then 1.0        >> 브레이크 상태에 따른 성능 평가
+                when (break = 'B') then 0.5
+                when (break = 'C') then 0.0
+            end as break_s ,
+                
+            case                                    >> 배터리 상태에 따른 성능 평가
+                when (20 > cast(battery as int)) then 0.2
+                when (40 > cast(battery as int)) then 0.4
+                when (60 > cast(battery as int)) then 0.6
+                else 1.0
+            end as battery_s
+            
+            from managed_smartcar_status_info ) T1
+
+2. 입력 데이터셋이 잘 만들어졌는지 확인 후 파일 합치기(한 개일 경우 이름 변경)
+    $ more /home/pilot-pjt/spark-data/classification/input/*  or  $ ls /home/pilot-pjt/spark-data/classification/input/*
+    $ cat 000000_0 000001_0 > classification_dataset.txt   => 파일 합치기 기능! 파일 두 개 이상일 때 필수
+
+3. HDFS에 스파크 입력용 데이터 디렉토리 생성해서 데이터셋 파일 옮기기 (스파크 머신러닝 연결용)
+    $ hdfs dfs -mkdir -p /pilot-pjt/spark-data/classification/input
+    $ hdfs dfs -put /home/pilot-pjt/spark-data/classification/input/classification_dataset.txt /pilot-pjt/spark-data/classification/input
+
+4. 제플린 시작 및 접속  $ zeppelin-daemon.sh restart   http://server02.hadoop.com:8081/
+5. 새 노트북 생성 >> SmartCar-Classification
+6. 라이브러리 임포트 및 학습 데이터 로드
+   import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer, StringIndexerModel, VectorAssembler}
+    import org.apache.spark.ml.feature.MinMaxScaler
+    import org.apache.spark.ml.Pipeline
+    import org.apache.spark.ml.classification.{RandomForestClassificationModel, RandomForestClassifier} 
+    import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+
+    import org.apache.spark.mllib.evaluation. BinaryClassificationMetrics
+    import org.apache.spark.mllib.evaluation.MulticlassMetrics
+    import org.apache.spark.mllib.util.MLUtils
+    val ds = spark.read.csv("/pilot-pjt/spark-data/classification/input/classification_dataset.txt")
+    ds.show(S)
+
+7. 이상징후 탐지 모델에 사용할 컬럼만 선택해서 다시 스파크 데이터셋 생성
+    val dsSmartCar = ds.selectExpr(
+        "cast(_c5 as long) car_capacity", "cast(_c6 as long) car_year", "cast(_c7 as string) car_model",
+        "cast(_c8 as int) tire_fl", "cast(_c9 as long) tire_fr", "cast(_c10 as long) tire_bl",
+        "cast(_c11 as long) tire_br", "cast(_c12 as long) light_fl", "cast(_c13 as long) light_fr",
+        "cast(_c14 as long) light_bl", "cast(_c15 as long) light_br", "cast(_c16 as string) engine",
+        "cast(_c17 as string) break", "cast(_c18 as long) battery", "cast(_c19 as string) status" )
+
+8. 생성한 데이터셋인 dsSmartCar에서 문자형 카테고리 컬럼을 숫자형으로 생성하고, 기존 컬럼은 삭제
+   val dsSmartCar_1 = new StringIndexer().setInputCol("car_model").setOutputCol("car_model_n").fit(dsSmartCar).transform(dsSmartCar)
+    val dsSmartCar_2 = new StringIndexer().setInputCol("engine").setOutputCol("engine_n").fit(dsSmartCar_1).transform(dsSmartCar_1)
+    val dsSmartCar_3 = new StringIndexer().setInputCol("break").setOutputCol("break_n").fit(dsSmartCar_2).transform(dsSmartCar_2)
+    val dsSmartCar_4 = new StringIndexer().setInputCol("status").setOutputCol("label").fit(dsSmartCar_3).transform(dsSmartCar_3)
+    val dsSmartCar_5 = dsSmartCar_4.drop("car_model").drop("engine").drop("break").drop("status")
+    dsSmartCar_5.show()
+
+9. 머신러닝에 사용할 변수를 벡터화(연속된 자료로 처리)해서 feature라는 필드에 새로 생성 & dsSmartCar의 값들에 대해 스케일링 작업 진행
+    -> features 컬럼 확인하기!
+   val cols = Array("car_capacity", "car_year","car_model_n","tire_fl","tire_fr","tire_bl", "tire_br", "light_fl", "light_fr", "light_bl", "light_br", "engine_n", "break_n", "battery")
+    val dsSmartCar_6 = new VectorAssembler().setInputCols(cols).setOutputCol("features").transform(dsSmartCar_5)
+    val dsSmartCar_7 = new MinMaxScaler().setInputCol("features").setOutputCol("scaledfeatures").fit(dsSmartCar_6).transform(dsSmartCar_6)
+    val dsSmartCar_8 = dsSmartCar_7.drop("features").withColumnRenamed("scaledfeatures", "features")
+
+    dsSmartCar_8.show(10)
+
+10. 전처리 작업이 끝난 스파크 학습 데이터셋을  LibSVM 형식의 파일로 HDFS의 “/pilot-pit/spark-data/classification/smartCarLibSvm" 에 저장
+    var dsSmartCar_9 = dsSmartCar_8.select("label", "features")
+     dsSmartCar_9.write.format("libsvm").save("/pilot-pjt/spark-data/classification/smartCarLibSVM")
+    휴 에서 데이터 확인 (레이블(0.0은 정상, 1.0은 비정상) 컬럼번호:값 ...)
+    => 1.0 1:0.0 2:0.875 3:0.42857142857142855 4:0.898876404494382 5:0.9072164948453608 6:0.8131868131868132 7:0.8817204301075269 8:0.0 9:0.0 10:0.0 11:0.0 12:0.0 13:0.5 14:0.9764705882352941
+
+11. 제플린에서 스파크ML 컨텍스트로 데이터 다시 로드
+    val dsSmartCar_10 = spark.read.format("libsvm").load("/pilot-pjt/spark-data/classification/smartCarLibSVM")
+    dsSmartCar_10.show(5)
+
+12. 레이블 인덱서와 피처 인덱스 생성 + 전체 데이터셋을 학습(Trainning)과 테스트(Test)로 나누기
+    val labelIndexer = new StringIndexer().setInputCol("label").setOutputCol("indexedLabel").fit(dsSmartCar_10) 
+    val featureIndexer = new VectorIndexer().setInputCol("features").setOutputCol("indexedFeatures").fit(dsSmartCar_10)
+    val Array(trainingData, testData) = dsSmartCar_10.randomSplit(Array (0.7, 0.3))
+
+13. 랜덤 포레스트 머신러닝을 위한 파라미터 설정 (rf, labelConverter) & 스파크ML 파이프라인 생성 & Training 데이터셋으로 모델 학습시키기
+    val rf = new RandomForestClassifier().setLabelCol("indexedLabel").setFeaturesCol("indexedFeatures").setNumTrees(3)
+    val labelConverter = new IndexToString().setInputCol("prediction").setOutputCol("predictedLabel").setLabels(labelIndexer.labels)
+    val pipeline = new Pipeline().setStages(Array(labelIndexer, featureIndexer, rf, labelConverter))
+    val model = pipeline.fit(trainingData)
+
+14. 랜덤 포레스트가 설명하는 각 트리의 결과값 확인
+    val rfModel = model.stages(2).asInstanceOf[RandomForestClassificationModel]
+    println(s"RandomForest Model Description :\n ${rfModel.toDebugString}")
+
+15. 테스트 데이터로 모델의 정확도 확인 (평가기 실행)
+    val predictions = model.transform(testData)
+    predictions.select("predictedLabel", "label", "features").show(5)
+    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("indexedLabel").setPredictionCol("prediction").setMetricName("accuracy")
+    val accuracy = evaluator.evaluate(predictions)
+
+16. 테스트 데이터로 예측 정확도 확인
+    println(s"@ Accuracy Rate = ${(accuracy)}")
+    println(s"@ Error Rate = ${(1.0 - accuracy)}")
+
+17. 스마트카 정상/비정상 예측에 대한 Confusion Matrix확인
+    val results = model.transform(testData).select("features", "label", "prediction")
+    val predictionAndLabels = results.select($"prediction",$"label").as[(Double, Double)].rdd
+    val bMetrics = new BinaryClassificationMetrics(predictionAndLabels)
+    val mMetrics = new MulticlassMetrics(predictionAndLabels)
+    val labels = mMetrics.labels
+    println("Confusion Matrix:")
+    println(mMetrics.confusionMatrix)
+    -----------------------------------------------
+    Confusion Matrix:
+            true     false  => 실제 데이터
+    true    437095.0  13002.0   
+    false   38867.0   132351.0  
+
+    정상을 정상으로 판단(True Positive) : 437095건
+    비정상을 정상으로 오탐지(False Positive) : 13002건 
+    비정상을 비정상으로 판단(False Negative) : 38867건
+    정상을 비정상으로 오탐지(Ture Negative) : 132351건
+
+18. 예측 모델 평가에 대한 정밀도(모델이 True라고 예측한 결과 중에서 실제 True인 결과 비율) 확인
+
+    labels.foreach { rate =>
+    println(s"@ Precision Rate($rate) = " + mMetrics.precision(rate))
+    }
+    -----------------------------------------------
+    @ Precision Rate(0.0) = 0.918340119589379
+    @ Precision Rate(1.0) = 0.9105488018823141
+
+19. 예측 모델 평가에 대한 재현율 확인
+
+    labels.foreach { rate =>
+        println(s"Recall Rate($rate) = " + mMetrics.recall(rate))
+    }
+    labels.foreach { rate =>
+    println(s"False Positive Rate($rate) = " + mMetrics.falsePositiveRate(rate))
+    }
+    -----------------------------------------------
+    Recall Rate(0.0) = 0.9711128934429689   (실제 정상인 결과 중에서 모델이 정상이라고 예측한 결과 비율)
+    Recall Rate(1.0) = 0.7729969979791844   (실제 비정상인 결과 중에서 모델이 비정상이라고 예측한 결과 비율)
+    False Positive Rate(0.0) = 0.22700300202081558 (비정상인 결과를 정상으로 예측)
+    False Positive Rate(1.0) = 0.02888710655703104 (정상인 결과를 비정상으로 예측)
+
+20. 예측 모델 평가에 대한 f1-score(Precision과 Recall의 조화 평균) 확인
+    labels.foreach { rate =>
+    println(s"F1-Score($rate) = " + mMetrics.fMeasure(rate))
+    }
+    -----------------------------------------------
+    F1-Score(0.0) = 0.9439895298247736
+    F1-Score(1.0) = 0.8361536590527876
 
 
-%spark
-import org.apache.spark.ml.feature.StringIndexer
-val dsSmartCar_1 = new StringIndexer().setInputCol("car_model").setOutputCol("car_model_n").fit(dsSmartCar).transform(dsSmartCar)
-val dsSmartCar_2 = new StringIndexer().setInputCol("engine").setOutputCol("engine_n").fit(dsSmartCar_1).transform(dsSmartCar_1)
-val dsSmartCar_3 = new StringIndexer().setInputCol("break").setOutputCol("break_n").fit(dsSmartCar_2).transform(dsSmartCar_2)
-val dsSmartCar_4 = new StringIndexer().setInputCol("status").setOutputCol("status_n").fit(dsSmartCar_3).transform(dsSmartCar_3)
-val dsSmartCar_5 = dsSmartCar_4.drop("car_model").drop("engine").drop("break").drop("status")
-dsSmartCar_5.show()
+<< 머하웃과 스파크ML을 이용한 군집 분석>> - 스마트카 고객 정보 분석
+- 데이터의 새로운 군집을 발견하는 마이닝 기법
+- 머하웃의 Canopy 분석으로 대략적 군집 개수 파악 -> 스파크ML의 K-Means를 이용해 군집의 공통 특징 분석
+
+1. 휴의 하이브 에디터로 “스마트카 마스터 정보 데이터셋"을 로컬 디스크에 저장
+    - 각 값을 공백으로 구분하도록 입력
+   insert overwrite local directory '/home/pilot-pjt/mahout-data/clustering/input'
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ' '
+    select car_number,
+    case 
+        when (car_capacity < 2000) then '소형'
+        when (car_capacity < 3000) then '중형'
+        when (car_capacity < 4000) then '대형'
+    end as car_capacity,
+    case
+        when ((2016-car_year) <= 4)  then 'NEW' 
+        when ((2016-car_year) <= 8)  then 'NORMAL' 
+        else 'OLD'
+    end as car_year ,
+    car_model, sex as owner_sex, floor (cast(age as int) * 0.1 ) * 10 as owner_age,
+    marriage as owner_marriage, job as owner_job, region as owner_region
+    from smartcar_master 
+
+2. Xshell로 파일 생성되었는지 확인
+    $ more /home/pilot-pjt/mahout-data/clustering/input/*
+
+3.HDFS 상에 머하웃 입력 데이터 디렉토리 생성 및 만들어진 파일 옮기기 -> 휴에서 확인
+    $ hdfs dfs -mkdir -p /pilot-pjt/mahout/clustering/input
+    $ cd /home/pilot-pjt/mahout-data/clustering/input/
+    $ mv 000000_0 smartcar_master.txt
+    $ hdfs dfs -put smartcar_master.txt /pilot-pjt/mahout/clustering/input
+
+4. 머하웃 Canopy 분석을 위해 텍스트 파일을 시퀀스 파일로 변환하기
+    - 변환을 위한 gdata.smartcar.mahout-1.0.jar 파일을 /home/pilot-pjt/mahout-data에 업로드하기
+    $ hadoop jar /home/pilot-pjt/mahout-data/bigdata.smartcar.mahout-1.0.jar com.wikibook.bigdata.smartcar.mahout.TextToSequence 
+      /pilot-pjt/mahout/clustering/input/smartcar_master.txt /pilot-pjt/mahout/cloustering/output/seq
+
+5. 변환한 파일 확인하기 (휴의 /pilot-pjt/mahout/clustering/output/seq/에서 확인)
+    $ hdfs dfs -text /pilot-pjt/mahout/cloustering/output/seq/폴더명 으로 확인 가능
+
+6. 시퀀스 파일을 각 행의 차량번호별로 (n-gram 기반의 TF 가중치가 반영된) 벡터 데이터로 변환 (n-gram의 벡터 모델 : 단어 분류/빈도수 측정 알고리즘)
+    - 차량번호별 각 항목의 단어를 분리하여 벡터화 -> HDFS의 /pilot-pjt/mahout/clustering/output/vec
+    $ mahout seq2sparse -i /pilot-pjt/mahout/clustering/output/seq -o /pilot-pjt/mahout/clustering/output/vec -wt tf -s 5 -md 3 -ng 2 -x 85 --namedVector
+    -wt: 단어 빈도 가중치 방식 / -md: 최소 문서 출현 횟수 / -ng: ngrams 최댓값 / --namedVector: 네임벡터 데이터 생성
+
+7. 센트로이드로부터의 거리를 나타내는 옵션 t1, t2를 바꿔가며 반복적으로 군집 분석 
+    (t1 > t2 여야하고, 중심~t2 반경은 군집 확정, t2~t1 사이 데이터는 다른 군집에 재포함됨)
+    - 첫 번째 Canopy 군집 분석 실행
+    $ mahout canopy -i /pilot-pjt/mahout/clustering/output/vec/tf-vectors/ -o /pilot-pjt/mahout/clustering/canopy/out 
+      -dm org.apache.mahout.common.distance.SquaredEuclideanDistanceMeasure -t1 50 -t2 45 -ow
+    -i 벡터 파일 경로 / -o: 출력 결과 경로 / -dm: 군집 거리 측정 알고리즘 / -t1 n : 거리값 1 /  -t2 n : 거리값 2
+
+8. 군집분석 결과 확인 (t1 = 50 / t2 = 45)
+    $ mahout clusterdump -i /pilot-pjt/mahout/clustering/canopy/out/clusters-*-final
+        => ClusterDumper: Wrote 1 clusters : t1, t2 거리값을 너무 크게 잡아서 하나의 군집만 만들어짐
+    
+    -> 거리값을 좁혀서 다시 군집분석하기 (t1 = 10 / t2 = 8)
+    $ mahout canopy -i /pilot-pjt/mahout/clustering/output/vec/tf-vectors/ -o /pilot-pjt/mahout/clustering/canopy/out 
+      -dm org.apache.mahout.common.distance.SquaredEuclideanDistanceMeasure -t1 10 -t2 8 -ow
+        => ClusterDumper: Wrote 852 clusters : 너무 좁힘.... 다시 늘려보기...
+
+    -> 거리값 다시 넓히기 ...(t1 = 12 / t2 = 10)
+    $ mahout canopy -i /pilot-pjt/mahout/clustering/output/vec/tf-vectors/ -o /pilot-pjt/mahout/clustering/canopy/out 
+      -dm org.apache.mahout.common.distance.SquaredEuclideanDistanceMeasure -t1 12 -t2 10 -ow
+        => ClusterDumper: Wrote 195 clusters
+
+9. 제플린 재실행 후 웹 접속 -> SmartCar-Clustering 노트북 만들기
+
+
+    
