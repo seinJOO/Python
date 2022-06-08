@@ -1,5 +1,3 @@
-# python -m http:server --cgi 8888
-
 #!/usr/bin/env python3
 import cgi, sys, asyncio
 from botengine import make_reply
